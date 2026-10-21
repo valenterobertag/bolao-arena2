@@ -31,18 +31,12 @@ export default function Categorias({ cfg, picks, now, onPick }) {
               {c.sub && <div className="mute" style={{ marginTop: 2 }}>{c.sub}</div>}
             </div>
             <div className="card-b">
-              {c.kind === "team" ? (
-                <div className="teams">
-                  {cfg.teams.map((t, i) => (
-                    <button key={i} disabled={locked}
-                      className={"pbtn" + (String(mine) === String(i) ? " on" : "") + (done && String(res) === String(i) ? " win" : "") + (done && String(mine) === String(i) && !right ? " miss" : "")}
-                      onClick={() => onPick(c.id, i)}>{t}</button>
-                  ))}
-                </div>
-              ) : cfg.roster.length ? (
+              {c.kind === "team" || cfg.roster.length ? (
                 <select className="in" disabled={locked} value={mine ?? ""} onChange={(e) => onPick(c.id, e.target.value)}>
-                  <option value="">Escolha uma pessoa</option>
-                  {roster.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  <option value="">{c.kind === "team" ? "Escolha uma equipe" : "Escolha uma pessoa"}</option>
+                  {c.kind === "team"
+                    ? cfg.teams.map((t, i) => <option key={i} value={String(i)}>{t}</option>)
+                    : roster.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               ) : (
                 <div className="mute">A lista de jogadores ainda não foi cadastrada.</div>

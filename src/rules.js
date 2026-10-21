@@ -1,94 +1,131 @@
-// Regras, textos e utilidades do bolão (pontuação conforme definido pela organização)
+import { useState, useMemo } from "react";
+import { Lock, Clock, ChevronDown } from "lucide-react";
+import { GAME_PTS, PHASES, PHASE_ORDER, GROUPS, GROUP_INFO, fmtDate, countdown, teamName, matchLocked } from "../rules";
 
-export const GAME_PTS = 3;
+export default function Jogos({ cfg, picks, now, onPick }) {
+  const [sel, setSel] = useState(null);
+  const [openIds, setOpenIds] = useState({}); // confrontos abertos/fechados pelo usuário
 
-// O sufixo abaixo precisa ser igual ao usado na função admin_reset_pin do schema.sql
-export const PIN_SUFFIX = "-arena5";
+  const def = useMemo(() => {
+    const withMatches = GROUPS.filter((g) => cfg.matches.some((m) => g.phases.includes(m.phase)));
+    const open = GROUPS.find((g) => cfg.matches.some((m) => g.phases.includes(m.phase) && !matchLocked(m, now)));
+    return (open || withMatches[withMatches.length - 1] || GROUPS[0]).id;
+  }, [cfg.matches, now]);
 
-export const CATS = [
-  { id: "champion", label: "Campeão", pts: 15, icon: "🏆", kind: "team" },
-  { id: "vice", label: "Vice-campeão", pts: 10, icon: "🥈", kind: "team" },
-  { id: "third", label: "3º colocado", pts: 7, icon: "🥉", kind: "team" },
-  { id: "fourth", label: "4º colocado", pts: 5, icon: "4️⃣", kind: "team" },
-  { id: "mvp", label: "MVP do torneio", pts: 10, icon: "⭐", kind: "person" },
-  { id: "sidao", label: "Troféu Sidão", sub: "o mais querido da Arena", pts: 5, icon: "❤️", kind: "person" },
-  { id: "checkins", label: "Mais check-ins em 2026", pts: 5, icon: "📍", kind: "person" },
-  { id: "revelacao", label: "Revelação do torneio", pts: 5, icon: "🚀", kind: "person" },
-];
+  const cur = GROUPS.find((g) => g.id === (sel ?? def)) || GROUPS[0];
 
-export const PHASES = {
-  R1: { label: "1ª rodada", games: ["Preto + Branco", "Preto + Branco", "Preto + Branco", "Dois cinzas"] },
-  R2: { label: "2ª rodada", games: ["Preto + Cinza", "Preto + Branco", "Preto + Branco", "Cinza + Branco"] },
-  R3: { label: "3ª rodada", games: ["Preto + Cinza", "Cinza + Branco", "Preto + Branco", "Preto + Branco"] },
-  R4: { label: "4ª rodada", games: ["Preto + Cinza", "Preto + Cinza", "Preto + Branco", "Quadra"] },
-  SF1: { label: "Semifinal 1", games: ["Dois pretos", "Dois cinzas (preto entra no 9º ponto)", "Preto + Branco"] },
-  SF2: { label: "Semifinal 2", games: ["Dois pretos", "Dois cinzas (preto entra no 9º ponto)", "Preto + Branco"] },
-  FINAL: { label: "Final", games: ["Quadra", "Quadra", "Quadra"] },
-};
-export const PHASE_ORDER = ["R1", "R2", "R3", "R4", "SF1", "SF2", "FINAL"];
-export const GROUPS = [
-  { id: "R1", label: "1ª rodada", phases: ["R1"] },
-  { id: "R2", label: "2ª rodada", phases: ["R2"] },
-  { id: "R3", label: "3ª rodada", phases: ["R3"] },
-  { id: "R4", label: "4ª rodada", phases: ["R4"] },
-  { id: "SF", label: "Semifinais", phases: ["SF1", "SF2"] },
-  { id: "FINAL", label: "Final", phases: ["FINAL"] },
-];
+  const matches = cfg.matches
+    .filter((m) => cur.phases.includes(m.phase))
+    .sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase) || new Date(a.start) - new Date(b.start));
 
-export const EMPTY_CFG = {
-  teams: Array.from({ length: 8 }, (_, i) => `Equipe ${i + 1}`),
-  roster: [],
-  catDeadline: "",
-  catClosed: false,
-  catResults: {},
-  matches: [],
-};
+  // Com 1 ou 2 confrontos (semifinais, final) já abre aberto; com mais, começa fechado
+  const isOpen = (m) => (m.id in openIds ? openIds[m.id] : matches.length <= 2);
+  const toggle = (m) => setOpenIds((o) => ({ ...o, [m.id]: !isOpen(m) }));
+  const setAll = (v) => setOpenIds((o) => ({ ...o, ...Object.fromEntries(matches.map((m) => [m.id, v])) }));
 
-/* ---------- Utilidades ---------- */
+  const total = matches.reduce((n, m) => n + m.games.length, 0);
+  const done = matches.reduce((n, m) => n + m.games.filter((g) => picks.g[g.id]).length, 0);
 
-export const slug = (s) =>
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return (
+    <>
+      <div className="chips">
+        {GROUPS.map((g) => (
+          <button key={g.id} className={"chip" + (g.id === cur.id ? " on" : "")} onClick={() => setSel(g.id)}>{g.label}</button>
+        ))}
+      </div>
 
-// Login por nome + PIN: o nome vira um e-mail interno e o PIN vira a senha
-export const emailFor = (name) => `${slug(name)}@arenabarramares.app`;
-export const passFor = (pin) => `${pin}${PIN_SUFFIX}`;
+      {GROUP_INFO[cur.id] && <div className="notice">{GROUP_INFO[cur.id]}</div>}
+      {total > 0 && (
+        <>
+          <div className="mute">Você palpitou {done} de {total} jogos nesta fase. Acerto vale {GAME_PTS} pontos.</div>
+          {matches.length > 2 && (
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn ghost sm" onClick={() => setAll(true)}>Abrir todos</button>
+              <button className="btn ghost sm" onClick={() => setAll(false)}>Fechar todos</button>
+            </div>
+          )}
+        </>
+      )}
 
-export const toLocalInput = (d) => {
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-};
-export const isoToInput = (iso) => (iso ? toLocalInput(new Date(iso)) : "");
-export const inputToIso = (v) => (v ? new Date(v).toISOString() : null);
+      {cur.phases.map((phase) => {
+        const list = matches.filter((m) => m.phase === phase);
+        if (!list.length) return <Pending key={phase} phase={phase} />;
+        return list.map((m) => (
+          <MatchCard key={m.id} m={m} cfg={cfg} picks={picks} now={now} onPick={onPick} open={isOpen(m)} onToggle={() => toggle(m)} />
+        ));
+      })}
+    </>
+  );
+}
 
-export const fmtDate = (s) =>
-  new Date(s).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+// Aparece enquanto o organizador ainda não cadastrou os confrontos da fase
+function Pending({ phase }) {
+  return (
+    <div className="card">
+      <div className="card-h">
+        <div className="mute" style={{ marginBottom: 4 }}>{PHASES[phase].label}</div>
+        <div className="vs"><span className="t">Equipes a definir</span></div>
+        <div className="meta"><span>Os palpites abrem quando o organizador cadastrar o confronto.</span></div>
+      </div>
+      {PHASES[phase].games.map((d, i) => (
+        <div className="game" key={i}>
+          <div className="gl"><b>Jogo {i + 1}</b><em>{d}</em></div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-export const countdown = (ms) => {
-  const m = Math.max(0, Math.floor(ms / 60000));
-  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${mm}min`;
-  return `${mm}min`;
-};
-
-export const teamName = (cfg, i) => (i === null || i === undefined || i === "" ? "?" : cfg.teams[Number(i)] ?? "?");
-export const personName = (cfg, id) => cfg.roster.find((p) => p.id === id)?.name ?? "";
-export const hasRes = (v) => v !== null && v !== undefined && v !== "";
-
-export const matchLocked = (m, now) => !!m.closed || (!!m.start && now >= new Date(m.start).getTime());
-export const catsLocked = (cfg, now) => !!cfg.catClosed || (!!cfg.catDeadline && now >= new Date(cfg.catDeadline).getTime());
-
-// Pontuação do próprio usuário (o ranking geral vem do banco)
-export function scoreUser(picks, cfg) {
-  let game = 0, hits = 0, cat = 0, catHits = 0;
-  for (const m of cfg.matches) {
-    for (const g of m.games) {
-      if (g.w && picks.g?.[g.id] === g.w) { game += GAME_PTS; hits++; }
-    }
-  }
-  for (const c of CATS) {
-    const r = cfg.catResults?.[c.id];
-    if (hasRes(r) && hasRes(picks.c?.[c.id]) && String(picks.c[c.id]) === String(r)) { cat += c.pts; catHits++; }
-  }
-  return { total: game + cat, game, hits, cat, catHits };
+function MatchCard({ m, cfg, picks, now, onPick, open, onToggle }) {
+  const locked = matchLocked(m, now);
+  const ms = m.start ? new Date(m.start).getTime() - now : null;
+  const earned = m.games.reduce((n, g) => n + (g.w && picks.g[g.id] === g.w ? GAME_PTS : 0), 0);
+  const done = m.games.filter((g) => picks.g[g.id]).length;
+  return (
+    <div className="card">
+      <button
+        className="card-h"
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{ width: "100%", textAlign: "left", border: 0, borderBottom: open ? undefined : 0, cursor: "pointer", font: "inherit", color: "inherit", display: "block" }}
+      >
+        <div className="row sp" style={{ marginBottom: 4 }}>
+          <span className="mute">{PHASES[m.phase].label}</span>
+          <ChevronDown size={20} style={{ transition: "transform .15s", transform: open ? "rotate(180deg)" : "none", color: "var(--brand)" }} />
+        </div>
+        <div className="vs">
+          <span className="t">{teamName(cfg, m.a)}</span><span className="x">x</span><span className="t">{teamName(cfg, m.b)}</span>
+        </div>
+        <div className="meta">
+          <span>{m.start ? fmtDate(m.start) : "Horário a definir"} · {done}/{m.games.length} palpites</span>
+          {locked ? (
+            <span className="st"><Lock size={12} /> Encerrado{earned ? ` · +${earned}` : ""}</span>
+          ) : (
+            <span className="st open"><Clock size={12} /> {ms !== null ? `Fecha em ${countdown(ms)}` : "Aberto"}</span>
+          )}
+        </div>
+      </button>
+      {open && m.games.map((g) => {
+        const mine = picks.g[g.id];
+        const off = locked || !!g.w;
+        const cls = (side) => {
+          let c = "pbtn";
+          if (mine === side) c += " on";
+          if (g.w === side) c += " win";
+          if (g.w && mine === side && g.w !== side) c += " miss";
+          return c;
+        };
+        return (
+          <div className="game" key={g.id}>
+            <div className="gl"><b>Jogo {g.idx + 1}</b><em>{PHASES[m.phase].games[g.idx]}</em></div>
+            <div className="pick">
+              <button className={cls("A")} disabled={off} onClick={() => onPick(g, "A")}>{teamName(cfg, m.a)}</button>
+              <button className={cls("B")} disabled={off} onClick={() => onPick(g, "B")}>{teamName(cfg, m.b)}</button>
+            </div>
+            {off && !mine && <div className="mute" style={{ marginTop: 6 }}>Sem palpite</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

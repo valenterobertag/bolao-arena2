@@ -58,6 +58,15 @@ export default function Jogos({ cfg, picks, now, onPick }) {
   );
 }
 
+// Selo com a pontuação do jogo (fica verde quando você acertou)
+function PtsBadge({ hit }) {
+  return (
+    <span className="st" style={hit ? { color: "var(--ok)", borderColor: "var(--ok)", fontWeight: 600 } : undefined}>
+      {hit ? `+${GAME_PTS} pts` : `${GAME_PTS} pts`}
+    </span>
+  );
+}
+
 // Aparece enquanto o organizador ainda não cadastrou os confrontos da fase
 function Pending({ phase }) {
   return (
@@ -69,7 +78,7 @@ function Pending({ phase }) {
       </div>
       {PHASES[phase].games.map((d, i) => (
         <div className="game" key={i}>
-          <div className="gl"><b>Jogo {i + 1}</b><em>{d}</em></div>
+          <div className="gl"><span className="row"><b>Jogo {i + 1}</b><PtsBadge /></span><em>{d}</em></div>
         </div>
       ))}
     </div>
@@ -117,7 +126,10 @@ function MatchCard({ m, cfg, picks, now, onPick, open, onToggle }) {
         };
         return (
           <div className="game" key={g.id}>
-            <div className="gl"><b>Jogo {g.idx + 1}</b><em>{PHASES[m.phase].games[g.idx]}</em></div>
+            <div className="gl">
+              <span className="row"><b>Jogo {g.idx + 1}</b><PtsBadge hit={!!g.w && mine === g.w} /></span>
+              <em>{PHASES[m.phase].games[g.idx]}</em>
+            </div>
             <div className="pick">
               <button className={cls("A")} disabled={off} onClick={() => onPick(g, "A")}>{teamName(cfg, m.a)}</button>
               <button className={cls("B")} disabled={off} onClick={() => onPick(g, "B")}>{teamName(cfg, m.b)}</button>
